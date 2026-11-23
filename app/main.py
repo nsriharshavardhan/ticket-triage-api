@@ -2,17 +2,18 @@
 
 from collections import Counter
 
-from fastapi import FastAPI, Query
+from fastapi import BackgroundTasks, FastAPI, Query
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
+from app.alerts import notify_p1_alert
 from app.storage import TriageStore
 from app.triage import TicketIn, TicketTriageOut, triage
 
 app = FastAPI(
     title="Ticket Triage API",
     description="Classifies SaaS support tickets into category, priority (P1-P3) and destination queue.",
-    version="1.2.0",
+    version="1.3.0",
 )
 
 store = TriageStore()
@@ -38,9 +39,11 @@ def health() -> dict:
 
 
 @app.post("/triage", response_model=TicketTriageOut)
-def triage_ticket(ticket: TicketIn) -> TicketTriageOut:
+def triage_ticket(ticket: TicketIn, background: BackgroundTasks) -> TicketTriageOut:
     result = triage(ticket)
     _record(ticket, result)
+    # Alerting runs after the response is sent so Slack latency never slows triage.
+    background.add_task(notify_p1_alert, ticket, result)
     return result
 
 

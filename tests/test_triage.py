@@ -106,3 +106,31 @@ def test_history_records_and_filters():
     p3 = client.get("/history?priority=P3").json()
     assert p3 and all(row["priority"] == "P3" for row in p3)
     assert client.get("/history?priority=P9").status_code == 422
+
+
+def test_p1_alert_dry_run_without_webhook(monkeypatch):
+    from app.alerts import notify_p1_alert
+
+    monkeypatch.delenv("SLACK_WEBHOOK_URL", raising=False)
+    assert notify_p1_alert(OUTAGE, triage(OUTAGE)) == {"sent": False, "reason": "dry_run"}
+    assert notify_p1_alert(FEATURE, triage(FEATURE)) == {"sent": False, "reason": "not_p1"}
+
+
+def test_p1_alert_posts_to_webhook(monkeypatch):
+    from app import alerts
+
+    sent = {}
+
+    class FakeResponse:
+        def raise_for_status(self):
+            pass
+
+    def fake_post(url, json, timeout):
+        sent.update(url=url, payload=json)
+        return FakeResponse()
+
+    monkeypatch.setenv("SLACK_WEBHOOK_URL", "https://hooks.slack.test/abc")
+    monkeypatch.setattr(alerts.httpx, "post", fake_post)
+    assert alerts.notify_p1_alert(OUTAGE, triage(OUTAGE)) == {"sent": True, "reason": "ok"}
+    assert sent["url"] == "https://hooks.slack.test/abc"
+    assert "P1" in sent["payload"]["text"]

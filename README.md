@@ -2,7 +2,11 @@
 
 [![CI](https://github.com/nsriharshavardhan/ticket-triage-api/actions/workflows/ci.yml/badge.svg)](https://github.com/nsriharshavardhan/ticket-triage-api/actions/workflows/ci.yml)
 
-**Live demo:** https://ticket-triage-api.onrender.com
+**Live demo:** https://ticket-triage-api.onrender.com · [API docs](https://ticket-triage-api.onrender.com/docs)
+
+> Free-tier Render services sleep when idle, so the first request can take ~30–50 s to wake up.
+
+<!-- Add a screenshot of the web form after deploying: docs/screenshot.png -->
 
 A FastAPI service that turns free-text SaaS support tickets into **structured, validated routing decisions**:
 category, priority (P1–P3), destination queue, confidence, the signals that triggered it, and a readable reason.
@@ -13,6 +17,8 @@ category, priority (P1–P3), destination queue, confidence, the signals that tr
 - **Deterministic, explainable rules.** Every decision lists its matched keywords and a reason, so it can be audited.
 - **Batch routing.** `POST /triage/batch` handles up to 50 tickets (e.g. a webhook queue) and returns a summary by priority.
 - **Audit history in SQLite** (standard library only). Every decision is stored, and `GET /history` can filter it.
+- **P1 Slack alerts.** Set `SLACK_WEBHOOK_URL` and P1 tickets are posted to Slack in a background task.
+  With the variable unset it runs in dry-run mode, so CI and demos never touch the network.
 - **Delivery:** pytest suite, GitHub Actions CI (tests + Docker build), Dockerfile, and a one-click `render.yaml`.
 
 ## Priority rules
@@ -45,6 +51,15 @@ curl -X POST https://ticket-triage-api.onrender.com/triage \
        "body":"All users cannot access the app since 9am. Urgent!"}'
 ```
 
+```bash
+curl -X POST https://ticket-triage-api.onrender.com/triage/batch \
+  -H "Content-Type: application/json" \
+  -d '{"tickets":[
+        {"customer_email":"a@shop.com","plan":"pro","subject":"Charged twice","body":"Our card was double charged this month."},
+        {"customer_email":"b@corp.com","plan":"enterprise","subject":"Site is down","body":"Production is down for every user."}]}'
+# -> {"results":[...], "summary":{"P1":1,"P2":0,"P3":1}}
+```
+
 ## Run locally
 
 ```bash
@@ -60,3 +75,4 @@ uvicorn app.main:app --reload   # open http://127.0.0.1:8000
 2. Render reads `render.yaml` and deploys. In the demo form, check that the "Enterprise outage" example comes back as **P1**.
 3. Note: the free plan's disk is temporary, so `/history` resets whenever the service restarts or redeploys.
    For permanent history, set `TRIAGE_DB_PATH` to a mounted disk or switch the store to Postgres.
+4. Optional: add `SLACK_WEBHOOK_URL` under **Environment** to get P1 alerts in a Slack channel.

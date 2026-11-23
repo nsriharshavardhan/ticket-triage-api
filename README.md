@@ -11,6 +11,7 @@ category, priority (P1–P3), destination queue, confidence, the signals that tr
 
 - **Pydantic v2 schemas** validate input (email, length limits, plan enum) and output, so bad payloads get a clear 422.
 - **Deterministic, explainable rules.** Every decision lists its matched keywords and a reason, so it can be audited.
+- **Batch routing.** `POST /triage/batch` handles up to 50 tickets (e.g. a webhook queue) and returns a summary by priority.
 - **Delivery:** pytest suite, GitHub Actions CI (tests + Docker build), Dockerfile, and a one-click `render.yaml`.
 
 ## Priority rules
@@ -31,6 +32,7 @@ Keywords in the subject count double. Ties go to the more severe category.
 |--------|------|-------------|
 | GET  | `/` | Browser demo form |
 | POST | `/triage` | Triage one ticket |
+| POST | `/triage/batch` | Triage up to 50 tickets, with a priority summary |
 | GET  | `/health` | Health check |
 
 ```bash

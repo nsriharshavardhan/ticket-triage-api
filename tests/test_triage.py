@@ -73,3 +73,18 @@ def test_triage_endpoint_and_demo_page():
     assert r.json()["priority"] == "P1"
     assert client.get("/").status_code == 200
     assert client.get("/health").json() == {"status": "ok"}
+
+
+def test_batch_summary_counts_match():
+    tickets = [OUTAGE, BILLING, FEATURE, OUTAGE]
+    r = client.post("/triage/batch", json={"tickets": [t.model_dump(mode="json") for t in tickets]})
+    assert r.status_code == 200
+    data = r.json()
+    assert len(data["results"]) == 4
+    assert data["summary"] == {"P1": 2, "P2": 0, "P3": 2}
+
+
+def test_batch_limits():
+    t = BILLING.model_dump(mode="json")
+    assert client.post("/triage/batch", json={"tickets": []}).status_code == 422
+    assert client.post("/triage/batch", json={"tickets": [t] * 51}).status_code == 422

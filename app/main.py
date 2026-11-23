@@ -1,15 +1,27 @@
 """FastAPI service: structured support-ticket triage."""
 
+from collections import Counter
+
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
+from pydantic import BaseModel, Field
 
 from app.triage import TicketIn, TicketTriageOut, triage
 
 app = FastAPI(
     title="Ticket Triage API",
     description="Classifies SaaS support tickets into category, priority (P1-P3) and destination queue.",
-    version="1.0.0",
+    version="1.1.0",
 )
+
+
+class BatchIn(BaseModel):
+    tickets: list[TicketIn] = Field(..., min_length=1, max_length=50)
+
+
+class BatchOut(BaseModel):
+    results: list[TicketTriageOut]
+    summary: dict[str, int]
 
 
 @app.get("/health")
@@ -20,6 +32,13 @@ def health() -> dict:
 @app.post("/triage", response_model=TicketTriageOut)
 def triage_ticket(ticket: TicketIn) -> TicketTriageOut:
     return triage(ticket)
+
+
+@app.post("/triage/batch", response_model=BatchOut)
+def triage_batch(body: BatchIn) -> BatchOut:
+    results = [triage(t) for t in body.tickets]
+    counts = Counter(r.priority.value for r in results)
+    return BatchOut(results=results, summary={p: counts.get(p, 0) for p in ("P1", "P2", "P3")})
 
 
 DEMO_HTML = """<!doctype html>

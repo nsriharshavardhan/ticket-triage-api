@@ -2,17 +2,25 @@
 
 from collections import Counter
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
+from app.storage import TriageStore
 from app.triage import TicketIn, TicketTriageOut, triage
 
 app = FastAPI(
     title="Ticket Triage API",
     description="Classifies SaaS support tickets into category, priority (P1-P3) and destination queue.",
-    version="1.1.0",
+    version="1.2.0",
 )
+
+store = TriageStore()
+
+
+def _record(ticket: TicketIn, result: TicketTriageOut) -> None:
+    store.record(ticket.customer_email, ticket.subject, result.category.value,
+                 result.priority.value, result.assigned_queue)
 
 
 class BatchIn(BaseModel):
@@ -31,14 +39,26 @@ def health() -> dict:
 
 @app.post("/triage", response_model=TicketTriageOut)
 def triage_ticket(ticket: TicketIn) -> TicketTriageOut:
-    return triage(ticket)
+    result = triage(ticket)
+    _record(ticket, result)
+    return result
 
 
 @app.post("/triage/batch", response_model=BatchOut)
 def triage_batch(body: BatchIn) -> BatchOut:
     results = [triage(t) for t in body.tickets]
+    for ticket, result in zip(body.tickets, results):
+        _record(ticket, result)
     counts = Counter(r.priority.value for r in results)
     return BatchOut(results=results, summary={p: counts.get(p, 0) for p in ("P1", "P2", "P3")})
+
+
+@app.get("/history")
+def history(
+    limit: int = Query(20, ge=1, le=200),
+    priority: str | None = Query(None, pattern="^P[123]$"),
+) -> list[dict]:
+    return store.recent(limit=limit, priority=priority)
 
 
 DEMO_HTML = """<!doctype html>
@@ -68,7 +88,7 @@ DEMO_HTML = """<!doctype html>
  <button>Triage ticket</button>
 </form>
 <div id="out"></div>
-<p class="meta"><a href="/docs">API docs</a></p>
+<p class="meta"><a href="/docs">API docs</a> · <a href="/history">Recent triage history</a></p>
 <script>
 const EX=[
  ["enterprise","Production down - API returning 500 for all users","Since 9am our whole team cannot log in and every request to the API returns 500. This is urgent, we are losing sales."],

@@ -1,3 +1,9 @@
+import os
+import tempfile
+
+# Point the audit DB at a throwaway file before the app module creates its store.
+os.environ["TRIAGE_DB_PATH"] = os.path.join(tempfile.mkdtemp(), "test_history.db")
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -88,3 +94,15 @@ def test_batch_limits():
     t = BILLING.model_dump(mode="json")
     assert client.post("/triage/batch", json={"tickets": []}).status_code == 422
     assert client.post("/triage/batch", json={"tickets": [t] * 51}).status_code == 422
+
+
+def test_history_records_and_filters():
+    client.post("/triage", json=FEATURE.model_dump(mode="json"))
+    client.post("/triage", json=OUTAGE.model_dump(mode="json"))
+    latest = client.get("/history?limit=1").json()
+    assert len(latest) == 1
+    assert latest[0]["priority"] == "P1"
+    assert latest[0]["assigned_queue"] == "sre-oncall"
+    p3 = client.get("/history?priority=P3").json()
+    assert p3 and all(row["priority"] == "P3" for row in p3)
+    assert client.get("/history?priority=P9").status_code == 422
